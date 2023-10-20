@@ -1,0 +1,88 @@
+---
+title: "by_gene_survival"
+author: "Gordana"
+date: "`r Sys.Date()`"
+output: html_document
+params: 
+  resdir: "results/Subtype"
+  ddatadir: "data/derived"
+  filenm: "cleaned_gene_dat.Rdata"
+  gene: "GUSB"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+library(survival)
+library(ggplot2)
+library(dplyr)
+library(tibble)
+```
+
+
+Create results directory
+```{r}
+if(!dir.exists(paste0("../../",params$resdir))) dir.create(paste0("../../",params$resdir))
+```
+
+Load data
+```{r}
+load(file=paste0("../../",params$ddatadir, "/", params$filenm))
+gene_surv_dat <- cdat1 %>% 
+    rename(gene = params$gene) %>% #select gene
+    mutate_at(c("stage", "mstype", "site"), as.factor) %>%
+    mutate(stage = relevel(stage, ref = "2"),# make factors and relevel
+           gene = scale(gene)) %>% # scale gene
+    select(gene, timeint_revised, timelastfu, event, 
+           bs1, bs2, bs3, bs4, stage, site, mstype)  # select relevant variables
+
+rm(cdat1)
+```
+
+
+### Survival analysis
+
+Survival object (interval censoring)
+```{r}
+my.surv.tmp = with(gene_surv_dat,
+                   Surv(time  = timeint_revised,
+                        time2 = timelastfu,
+                        event = event))
+```
+
+Fit model for survival by gene, controlling for age (bs spline), stage, mstype, and stratifying by site.
+```{r}
+mod_main = coxph( my.surv.tmp ~ bs1 + bs2 + bs3 + bs4 + #bs1 to bs 4 are age basis splines
+                      stage  + mstype + gene + strata(site),
+                    data = gene_surv_dat,
+                    na.action = na.exclude)
+
+```
+
+Fit a model as above, adding interaction between gene and mstype
+```{r}
+mod_int = update(mod_main, ~ . + mstype:gene)
+```
+
+Arrange results into a one row data frame
+```{r}
+res <- summary(mod_main)$conf.int %>% # start with summary of main model
+    as.data.frame() %>%  
+    transmute(hr = `exp(coef)`,
+              hr.L95 = `lower .95`,
+              hr.U95 = `upper .95`) %>%  #rename and select variables
+    rownames_to_column(var = "pred") %>%
+    filter(pred == "gene") %>%  # filter just the gene row
+    mutate(gene = params$gene,  # add other things
+           p.gene = anova(mod_main)[ "gene", "Pr(>|Chi|)"],
+           p.ms.gene.int = anova(mod_int)[ "mstype:gene", "Pr(>|Chi|)" ],
+           n = mod_main$n) %>% 
+    relocate(gene) %>% 
+    select(-pred)
+
+res
+```
+
