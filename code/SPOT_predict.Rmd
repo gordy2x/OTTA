@@ -1,0 +1,132 @@
+---
+title: "Data plots and checks"
+author: "Gordana Popovic"
+date: "21/05/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+```
+
+
+```{r}
+ovarian<-read_xlsx("../data/MOCOG_nano_norm_20200915_w ages & stage.xlsx")
+coefs<-read.csv("../data/SPOT_coefs.csv")
+```
+
+
+recode and check
+
+
+```{r}
+Ovarian <- ovarian %>% 
+  mutate(OTTA_ID = `MOCOG ID`,
+         refage_revised = AgeAtDiagnosis,
+         age.fq2 = ifelse(refage_revised>=53&refage_revised<60,1,0), #recode age
+         age.fq3 = ifelse(refage_revised>=60&refage_revised<67,1,0),
+         age.fq4 = ifelse(refage_revised>=67,1,0),
+         stage.f1 = ifelse(stagenew%in%c(1),1,0), #recode stage
+         stage.f8 = ifelse(is.na(stagenew),1,0)) %>% 
+  mutate(patientIDi = substr(OTTA_ID,1,9))
+
+
+```
+
+
+```{r}
+
+#check age recoding
+Ovarian%>% 
+  group_by(age.fq2,age.fq3,age.fq4) %>% 
+  summarise(min_age=min(refage_revised),max_age=max(refage_revised),N=length(refage_revised))
+
+
+#Check stage recoding
+Ovarian%>% 
+  group_by(stage.f1,stage.f8) %>% 
+  summarise(stageI=sum(stagenew==1),stageII=sum(stagenew==2),not_stage=sum(is.na(stagenew)),
+            N=length(stagenew))
+
+# write.csv(age,file="../results/age_code.csv")
+
+
+
+```
+
+```{r}
+# Ovarian %>% 
+#   group_by(pre_treatment_primary,tissue_site) %>% 
+#   count()
+
+```
+
+
+Find missing genes
+```{r}
+
+coefs$Gene[coefs$Gene=="PD.1"]="PD1"
+col_id=match(coefs$Gene, colnames(Ovarian))
+coefs$Gene[is.na(col_id)]
+coefs$Coefficient[is.na(col_id)]
+mean(abs(coefs$Coefficient))
+
+```
+
+
+```{r}
+coefs_sub=coefs[!coefs$Gene%in%coefs$Gene[is.na(col_id)],]
+Ovarian_ord = Ovarian[,match(coefs_sub$Gene, colnames(Ovarian))]
+all(colnames(Ovarian_ord)==coefs_sub$Gene)
+
+```
+
+#predict
+```{r}
+X=as.matrix(Ovarian_ord)
+beta=as.matrix(coefs_sub$Coefficient)
+Ovarian$predict=X%*%beta
+```
+
+```{r}
+Ovarian<-Ovarian %>% 
+  mutate(quintile=cut(predict,c(-6,-0.7320, -0.3126, -0.0255, 0.2658,6), 
+                      labels=paste0("C",c(1:5))))
+```
+
+
+```{r}
+write.csv(Ovarian,file="../results/MOCOG_nano_norm_20200915_w ages & stage.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

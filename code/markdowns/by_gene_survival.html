@@ -11,7 +11,7 @@
 
 <meta name="author" content="Gordana" />
 
-<meta name="date" content="2023-10-20" />
+<meta name="date" content="2023-10-23" />
 
 <title>by_gene_survival</title>
 
@@ -365,26 +365,15 @@ pre code {
 
 <h1 class="title toc-ignore">by_gene_survival</h1>
 <h4 class="author">Gordana</h4>
-<h4 class="date">2023-10-20</h4>
+<h4 class="date">2023-10-23</h4>
 
 </div>
 
 
-<pre class="r"><code>library(survival)</code></pre>
-<pre><code>## Warning: package &#39;survival&#39; was built under R version 4.0.4</code></pre>
-<pre class="r"><code>library(ggplot2)
-library(dplyr)</code></pre>
-<pre><code>## Warning: package &#39;dplyr&#39; was built under R version 4.0.5</code></pre>
-<pre><code>## 
-## Attaching package: &#39;dplyr&#39;</code></pre>
-<pre><code>## The following objects are masked from &#39;package:stats&#39;:
-## 
-##     filter, lag</code></pre>
-<pre><code>## The following objects are masked from &#39;package:base&#39;:
-## 
-##     intersect, setdiff, setequal, union</code></pre>
-<pre class="r"><code>library(tibble)</code></pre>
-<pre><code>## Warning: package &#39;tibble&#39; was built under R version 4.0.5</code></pre>
+<pre class="r"><code>library(survival)
+library(ggplot2)
+library(dplyr)
+library(tibble)</code></pre>
 <p>Create results directory</p>
 <pre class="r"><code>if(!dir.exists(paste0(&quot;../../&quot;,params$resdir))) dir.create(paste0(&quot;../../&quot;,params$resdir))</code></pre>
 <p>Load data</p>
@@ -400,12 +389,23 @@ gene_surv_dat &lt;- cdat1 %&gt;%
 rm(cdat1)</code></pre>
 <div id="survival-analysis" class="section level3">
 <h3>Survival analysis</h3>
-<p>Survival object (interval censoring)</p>
-<pre class="r"><code>my.surv.tmp = with(gene_surv_dat,
-                   Surv(
-                     time  = timeint_revised,
-                     time2 = timelastfu,
-                     event = event))</code></pre>
+<p>Left censoring occurs if a participant is entered into the study when
+the milestone of interest (death) occurred prior to study entry but the
+age at that milestone is unknown. Left truncation occurs when
+individuals who have already passed the milestone at the time of study
+recruitment are not included in the study. <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3121224/" class="uri">https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3121224/</a></p>
+<p>What do we actually want?</p>
+<p>Josh’s code says this is left censoring. Set up like this it is
+actually a counting process (which i am pretty sure is not what we
+want).</p>
+<pre class="r"><code># From josh&#39;s code
+# overall survival object with left censoring
+# my.surv.tmp = Surv( tmpdat[, &quot;timeint_revised&quot; ], tmpdat[, &quot;timelastfu&quot; ], tmpdat[, &quot;event&quot; ] )
+            
+my.surv.tmp = with(gene_surv_dat,
+                   Surv(time  = timeint_revised, 
+                        time2 = timelastfu,
+                        event = event))</code></pre>
 <p>Fit model for survival by gene, controlling for age (bs spline),
 stage, mstype, and stratifying by site.</p>
 <pre class="r"><code>mod_main = coxph( my.surv.tmp ~ bs1 + bs2 + bs3 + bs4 + #bs1 to bs 4 are age basis splines

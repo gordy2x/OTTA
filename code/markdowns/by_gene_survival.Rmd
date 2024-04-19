@@ -16,14 +16,16 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r message=FALSE, warning=FALSE}
-library(survival)
-library(ggplot2)
-library(dplyr)
-library(tibble)
+library(survival) # survival models
+library(survminer) #plotting survival
+library(ggplot2) # plotting
+library(dplyr) # data wrangling
+library(tibble) # data wrangling
+library(table1) # nice summay tables
 ```
 
 
-Create results directory
+Create results directory if it does not exists
 ```{r}
 if(!dir.exists(paste0("../../",params$resdir))) dir.create(paste0("../../",params$resdir))
 ```
@@ -33,33 +35,37 @@ Load data
 load(file=paste0("../../",params$ddatadir, "/", params$filenm))
 gene_surv_dat <- cdat1 %>% 
     rename(gene = params$gene) %>% #select gene
-    mutate_at(c("stage", "mstype", "site"), as.factor) %>%
+    mutate_at(c("stage", "mstype", "site"), as.factor) %>% # make these factors
     mutate(stage = relevel(stage, ref = "2"),# make factors and relevel
            gene = scale(gene)) %>% # scale gene
-    select(gene, timeint_revised, timelastfu, event, 
+    select(gene, timeint_revised, timelastfu, event, refage_revised,
            bs1, bs2, bs3, bs4, stage, site, mstype)  # select relevant variables
 
 rm(cdat1)
+table1( ~ . -bs1 - bs2 - bs3 - bs4 - site  | mstype, data = gene_surv_dat)
 ```
 
 
 ### Survival analysis
 
-Survival object (interval censoring)
+Left truncation is accounted for by removing patients from the risk set until they enrol in the study, as in  Moore (2016, Section 3.5). 
+
+
 ```{r}
 my.surv.tmp = with(gene_surv_dat,
-                   Surv(time  = timeint_revised,
-                        time2 = timelastfu,
-                        event = event))
+                   Surv(time  = timeint_revised/365, # time from diagnosis to study enrolment
+                        time2 = timelastfu/365, # time from diagnosis to death/censoring
+                        event = event)) # 0 = alive, 1 = dead
+
+plot(survfit(my.surv.tmp~1))
 ```
 
 Fit model for survival by gene, controlling for age (bs spline), stage, mstype, and stratifying by site.
 ```{r}
-mod_main = coxph( my.surv.tmp ~ bs1 + bs2 + bs3 + bs4 + #bs1 to bs 4 are age basis splines
+mod_main = coxph( my.surv.tmp ~ bs1 + bs2 + bs3 + bs4 + #bs1 to bs4 are age basis splines
                       stage  + mstype + gene + strata(site),
                     data = gene_surv_dat,
                     na.action = na.exclude)
-
 ```
 
 Fit a model as above, adding interaction between gene and mstype
@@ -85,4 +91,64 @@ res <- summary(mod_main)$conf.int %>% # start with summary of main model
 
 res
 ```
+
+### Violin plot
+
+```{r}
+ggplot( gene_surv_dat, aes( mstype, gene ) ) + 
+    xlab("molecular subtype") + ylab("normalized expression") + theme_bw() +
+    geom_violin(aes(fill=mstype)) + 
+    geom_point(size=.05) +
+    geom_jitter(width = 0.05, height=0.0, alpha=.2) + 
+    labs(title=params$gene) + guides(fill=FALSE) +
+    geom_boxplot(width=0.05, notch=TRUE, outlier.shape=NA) +
+    stat_compare_means(symnum.args = )
+```
+
+
+```{r, fig.width=5, fig.height=5}
+
+# calculate gene quantiles
+gene_surv_dat <- gene_surv_dat %>% 
+  mutate(qgene = cut(gene, quantile(gene,seq(0, 1, 0.20)), include.lowest = TRUE),
+         qgene = factor(qgene, levels = levels(qgene),
+                        labels = c("Q1", "Q2", "Q3", "Q4", "Q5"))) # relabel
+
+
+# calculate and format p-value (for left truncated can't use default log rank, but can use cox version)
+log_rank = summary(coxph(my.surv.tmp   ~ qgene ,
+                         data = gene_surv_dat))$sctest # log rank test
+pval = ifelse(log_rank[3]<0.0001, "p < 0.0001", paste("p =", round(log_rank[3], 4))) 
+
+
+# plot survival curves
+# fit model
+qgene_survmod <- survfit(my.surv.tmp ~ qgene, data=gene_surv_dat)
+
+qgene_surv_plot = ggsurvplot(qgene_survmod, data=gene_surv_dat, submain=params$gene, 
+                      conf.int = FALSE, 
+                      risk.table = TRUE, 
+                      risk.table.y.text.col = TRUE,
+                      risk.table.height = 0.3,
+                      surv.median.line = "hv",  # add the median survival pointer.
+                      xlab="Time (years)",
+                      ggtheme = theme_bw(), legend="bottom",
+                      legend.labs = c("Q1", "Q2", "Q3", "Q4", "Q5"),
+                      palette = c( "#99CCCC", "#0099CC", "#6666FF", "#0033CC", "#663366" ) ) 
+# the above palette is not that colour blind friendly
+
+# add p-value text
+qgene_surv_plot$plot <- qgene_surv_plot$plot+ 
+              ggplot2::annotate("text", 
+                                x = 9, y = 0.95,
+                                label = pval, size = 4)
+
+qgene_surv_plot
+
+```
+
+
+### References
+
+Moore, Dirk F. Applied survival analysis using R. Vol. 473. Cham: Springer, 2016. [web link](https://xsliulab.github.io/Workshop/2021/week3/survival-analysis-book.pdf)
 

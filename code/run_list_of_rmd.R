@@ -1,7 +1,11 @@
 
 library(tidyverse)
+load(file=paste0(ddatadir, "cleaned_gene_dat.Rdata"))
+
+
 for(irmd in c(1,3,7:12)) #
 {
-  rmarkdown::render(paste0(folder,"/",all_rmds$filenm[irmd]), 
+  rmarkdown::render("data/by_gene_survival.Rmd",
+                    output_file = paste0("results/gn")
                     params = list(final = TRUE))
 }
