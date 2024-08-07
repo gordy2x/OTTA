@@ -29,6 +29,7 @@ recode and check
 Ovarian <- ovarian %>% 
   mutate(OTTA_ID = `MOCOG ID`,
          refage_revised = AgeAtDiagnosis,
+         stagenew = ifelse(stagenew == "unknown", NA,stagenew),
          age.fq2 = ifelse(refage_revised>=53&refage_revised<60,1,0), #recode age
          age.fq3 = ifelse(refage_revised>=60&refage_revised<67,1,0),
          age.fq4 = ifelse(refage_revised>=67,1,0),
@@ -102,7 +103,7 @@ Ovarian<-Ovarian %>%
 
 
 ```{r}
-write.csv(Ovarian,file="../results/MOCOG_nano_norm_20200915_w ages & stage.csv")
+write.csv(Ovarian,file="../results/MOCOG_nano_norm_20200915_w ages & stage_with_predict.csv")
 ```
 
 
